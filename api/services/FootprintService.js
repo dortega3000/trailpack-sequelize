@@ -40,27 +40,38 @@ module.exports = class FootprintService extends Service {
   create(modelName, values, options) {
     const Model = this._getModel(modelName)
     const modelOptions = _.defaultsDeep({}, options, _.get(this.app.config, 'footprints.models.options'))
-    if (!Model) {
+    const ignoredModels = _.get(this.app.config, 'footprints.models.ignored') || []
+    if ((!Model) || (_.includes(ignoredModels,modelName))) {
       return Promise.reject(new ModelError('E_NOT_FOUND', `${modelName} can't be found`))
     }
     if (modelOptions.populate) {
-      modelOptions.include = this._createIncludeField(Model, modelOptions.populate)
+      modelOptions.include = this._createIncludeField(Model, modelOptions.populate, ignoredModels)
     }
     return Model.create(values, modelOptions).catch(manageError)
   }
 
-  _createIncludeField(model, populate) {
-    if (populate === true || populate === 'all') return {all: true}
-    if (_.isPlainObject(populate) || _.isArray(populate)) return populate
+  _createIncludeField(model, populate, ignoredModels) {
+ 
+    if (populate === true || populate === 'all') {
+      const includes=[]
+      model.associations.forEach((value, key) => {
+        includes.push(value)
+      })
+      return includes
+    }
+    if (_.isPlainObject(populate) || _.isArray(populate)) {
+      return populate
+    }
+    if (_.isSTring(polulate)){
+      const fields = populate.split(',')
+      const includes = []
 
-    const fields = populate.split(',')
-    const includes = []
-
-    fields.forEach((value, key) => {
-      includes.push(model.associations[value])
-    })
-
-    return includes
+      fields.forEach((value, key) => {
+        includes.push(model.associations[value])
+      })
+      return includes
+    }
+    return []
   }
 
   /**
@@ -75,12 +86,13 @@ module.exports = class FootprintService extends Service {
   find(modelName, criteria, options) {
     const Model = this._getModel(modelName)
     const modelOptions = _.defaultsDeep({}, options, _.get(this.app.config, 'footprints.models.options'))
+    const ignoredModels = _.get(this.app.config, 'footprints.models.ignored') || []
     let query
-    if (!Model) {
+    if ((!Model) || (_.includes(ignoredModels,modelName))) {
       return Promise.reject(new ModelError('E_NOT_FOUND', `${modelName} can't be found`))
     }
     if (modelOptions.populate) {
-      modelOptions.include = this._createIncludeField(Model, modelOptions.populate)
+      modelOptions.include = this._createIncludeField(Model, modelOptions.populate, ignoredModels)
     }
     delete modelOptions.populate
 
@@ -124,8 +136,10 @@ module.exports = class FootprintService extends Service {
    */
   update(modelName, criteria, values, options) {
     const Model = this._getModel(modelName)
-    if (!options) options = {}
-    if (!Model) {
+    const modelOptions = _.defaultsDeep({}, options, _.get(this.app.config, 'footprints.models.options'))
+    const ignoredModels = _.get(this.app.config, 'footprints.models.ignored') || []
+
+    if ((!Model) || (_.includes(ignoredModels,modelName))) {
       return Promise.reject(new ModelError('E_NOT_FOUND', `${modelName} can't be found`))
     }
     let query
@@ -133,16 +147,16 @@ module.exports = class FootprintService extends Service {
       criteria = {}
     }
 
-    if (_.isArray(options.populate) || _.isPlainObject(options.populate)) {
-      options.include = options.populate
-      delete options.populate
+    if (modelOptions.populate) {
+      modelOptions.include = this._createIncludeField(Model, modelOptions.populate, ignoredModels)
     }
+    delete modelOptions.populate
 
     if (_.isPlainObject(criteria)) {
       if (!criteria.where) {
         criteria = {where: criteria}
       }
-      query = Model.update(values, _.extend(criteria, options))
+      query = Model.update(values, _.extend(criteria, modelOptions))
     }
     else {
       criteria = {
@@ -151,7 +165,7 @@ module.exports = class FootprintService extends Service {
         }
       }
 
-      query = Model.update(values, _.extend(criteria, options)).then(results => results[0])
+      query = Model.update(values, _.extend(criteria, modelOptions)).then(results => results[0])
     }
 
     return query.catch(manageError)
@@ -167,26 +181,24 @@ module.exports = class FootprintService extends Service {
    */
   destroy(modelName, criteria, options) {
     const Model = this._getModel(modelName)
-    if (!options) options = {}
+    const modelOptions = _.defaultsDeep({}, options, _.get(this.app.config, 'footprints.models.options'))
+    const ignoredModels = _.get(this.app.config, 'footprints.models.ignored') || []
+
     let query
-    if (!Model) {
+    if ((!Model) || (_.includes(ignoredModels,modelName))) {
       return Promise.reject(new ModelError('E_NOT_FOUND', `${modelName} can't be found`))
     }
 
-    if (_.isArray(options.populate) || _.isPlainObject(options.populate)) {
-      options.include = options.populate
-      delete options.populate
+    if (modelOptions.populate) {
+      modelOptions.include = this._createIncludeField(Model, modelOptions.populate, ignoredModels)
     }
+    delete modelOptions.populate
 
     if (_.isPlainObject(criteria)) {
       if (!criteria.where) {
         criteria = {where: criteria}
       }
-      if (_.isArray(options.populate) || _.isPlainObject(options.populate)) {
-        criteria.include = options.populate
-        delete options.populate
-      }
-      query = Model.destroy(_.extend(criteria, options))
+      query = Model.destroy(_.extend(criteria, modelOptions))
     }
     else {
       criteria = {
@@ -194,7 +206,7 @@ module.exports = class FootprintService extends Service {
           [Model.primaryKeyAttribute]: criteria
         }
       }
-      query = Model.destroy(_.extend(criteria, options)).then(results => results[0])
+      query = Model.destroy(_.extend(criteria, modelOptions)).then(results => results[0])
     }
 
     return query.catch(manageError)
@@ -212,7 +224,9 @@ module.exports = class FootprintService extends Service {
    */
   createAssociation(parentModelName, parentId, childAttributeName, values, options) {
     const parentModel = this._getModel(parentModelName)
-    if (!parentModel) {
+    const ignoredModels = _.get(this.app.config, 'footprints.models.ignored') || []
+
+    if ((!parentModel) || (_.includes(ignoredModels,parentModel))) {
       return Promise.reject(new ModelError('E_NOT_FOUND', `${parentModelName} can't be found`))
     }
     const association = parentModel.associations[childAttributeName]
@@ -224,6 +238,9 @@ module.exports = class FootprintService extends Service {
 
     if (!options) {
       options = {}
+    }
+    if ((!childModel) || (_.includes(ignoredModels,childModel))) {
+      return Promise.reject(new ModelError('E_NOT_FOUND', `${childModelName} can't be found`))
     }
     // Used for things like hasMany
     if (association.foreignKeyField || (association.sourceKey && !association.targetKey)) {
@@ -265,7 +282,9 @@ module.exports = class FootprintService extends Service {
    */
   findAssociation(parentModelName, parentId, childAttributeName, criteria, options) {
     const parentModel = this._getModel(parentModelName)
-    if (!parentModel) {
+    const ignoredModels = _.get(this.app.config, 'footprints.models.ignored') || []
+
+    if ((!parentModel) || (_.includes(ignoredModels,parentModel))) {
       return Promise.reject(new ModelError('E_NOT_FOUND', `${parentModelName} can't be found`))
     }
     const association = parentModel.associations[childAttributeName]
@@ -274,7 +293,7 @@ module.exports = class FootprintService extends Service {
     }
     const childModelName = association.target.name
     const childModel = this._getModel(childModelName)
-    if (!childModel) {
+    if ((!childModel) || (_.includes(ignoredModels,childModel))) {
       return Promise.reject(new ModelError('E_NOT_FOUND', `${childModelName} can't be found`))
     }
 
@@ -333,7 +352,9 @@ module.exports = class FootprintService extends Service {
    */
   updateAssociation(parentModelName, parentId, childAttributeName, criteria, values, options) {
     const parentModel = this._getModel(parentModelName)
-    if (!parentModel) {
+    const ignoredModels = _.get(this.app.config, 'footprints.models.ignored') || []
+
+    if ((!parentModel) || (_.includes(ignoredModels,parentModel))) {
       return Promise.reject(new ModelError('E_NOT_FOUND', `${parentModelName} can't be found`))
     }
     const association = parentModel.associations[childAttributeName]
@@ -342,7 +363,8 @@ module.exports = class FootprintService extends Service {
     }
     const childModelName = association.target.name
     const childModel = this._getModel(childModelName)
-    if (!childModel) {
+
+    if ((!childModel) || (_.includes(ignoredModels,childModel))) {
       return Promise.reject(new ModelError('E_NOT_FOUND', `${childModelName} can't be found`))
     }
 
