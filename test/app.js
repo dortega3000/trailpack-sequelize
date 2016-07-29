@@ -29,6 +29,25 @@ module.exports = _.defaultsDeep({
           }
         }
       },
+      UserExtraInfo: class UserExtraInfo extends Model {
+        static config() {
+          return {
+            options: {
+              classMethods: {
+                associate: (models) => {
+                  models.Page.belongsTo(models.User, { as: 'User' })
+                }
+              }
+            }
+          }
+        }
+
+        static schema(app, Sequelize) {
+          return {
+            gravatar: { type: Sequelize.STRING, allowNull: false}
+          }
+        }
+      },
       Project: class Project extends Model {
         static config() {
           return {
@@ -68,6 +87,7 @@ module.exports = _.defaultsDeep({
                       allowNull: true
                     }
                   })
+                  models.User.hasOne(models.UserExtraInfo)
                 }
               }
             }
@@ -180,6 +200,14 @@ module.exports = _.defaultsDeep({
         require('../') // trailpack-sequelize
       ]
     },
+    footprints:{
+      models:{
+        ignore: ['UserExtraInfo']
+        options:{
+          populate: true 
+        }
+      }
+    }
     database: {
       stores: {
         teststore: {
