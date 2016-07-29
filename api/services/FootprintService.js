@@ -57,6 +57,7 @@ module.exports = class FootprintService extends Service {
       model.associations.forEach((value, key) => {
         includes.push(value)
       })
+      
       return includes
     }
     if (_.isPlainObject(populate) || _.isArray(populate)) {
